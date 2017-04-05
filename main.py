@@ -1,5 +1,6 @@
 # Memory Cache Simulator
-# by Pedro "Coin" Duarte <coinbr@gmail.com>
+# Tested in: Python 3.5.1
+# Author: Pedro "Coin" Duarte <coinbr@gmail.com>
 #
 #
 # DO WHAT THE FUCK YOU WANT TO BUT IT'S NOT MY FAULT PUBLIC LICENSE
