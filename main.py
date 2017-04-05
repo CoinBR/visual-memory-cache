@@ -21,6 +21,9 @@
 # liable for anything that happens or goes wrong with your use of the work.
 
 
+import matplotlib.pyplot as plt
+
+
 class Block:
 
     def __init__(self, n_words=1):
@@ -268,19 +271,29 @@ class Tracer:
 
         for word in self._filter():
             self.cache.read(word)
-            self.log.append(str(self.cache))
+            self.log.append((self.cache.n_hits,
+                             self.cache.n_blocks))
 
         return str(self.cache)
+
+
+def plot(tracer):
+
+    plt.plot([entry[0] for entry in tracer.log])
+    plt.xlabel('Accesses')
+    plt.ylabel('Hits')
+    plt.show()
 
 
 if __name__ == "__main__":
 
     n_blocks = int(input("# of cache blocks: "))
-    memo_size = int(input("# of memory words: "))
+    n_words = int(input("# of words in each block: "))
     filename = input("trace file name: ")
 
-    cache = Cache(n_blocks, memo_size)
+    cache = Cache(n_blocks, n_words)
     tracer = Tracer(cache, filename)
 
     print(tracer.trace())
+    plot(tracer)
     input()
