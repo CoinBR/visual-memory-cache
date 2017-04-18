@@ -115,6 +115,61 @@ class Layer:
 
     def access_address(self, address_tag, word=0):
         # Access a memory Address. If in cache, returns Layer Rank #
+        """
+        >>> c = Cache(2, 1, 4)
+
+        >>> c.read('A0')
+        >>> print(c)
+        0 / 1
+
+        >>> c.read('A2')
+        >>> print(c)
+        0 / 2
+
+        >>> c.read('A4')
+        >>> print(c)
+        0 / 3
+
+        >>> c.read('A2')
+        >>> print(c)
+        1 / 4
+
+        >>> c.read('A6')
+        >>> print(c)
+        1 / 5
+
+        >>> c.read('A4')
+        >>> print(c)
+        2 / 6
+
+        >>> c.read('A2')
+        >>> print(c)
+        3 / 7
+
+        >>> c.read('A0')
+        >>> print(c)
+        4 / 8
+
+        >>> c.read('B1')
+        >>> print(c)
+        4 / 9
+
+        >>> c.read('B5')
+        >>> print(c)
+        4 / 10
+
+        >>> c.read('B7')
+        >>> print(c)
+        4 / 11
+
+        >>> c.read('B3')
+        >>> print(c)
+        4 / 12
+
+        >>> c.read('B9')
+        >>> print(c)
+        4 / 13
+        """
 
         if self._pristine:
             self._pristine = False
@@ -382,6 +437,8 @@ if __name__ == "__main__":
     cache = Cache(n_blocks, n_words, n_layers)
     tracer = Tracer(cache, filename)
 
-    print(tracer.trace())
+    print('{0} ({1:.2f}%)'.format(tracer.trace(),
+                                  tracer.cache.n_hits / tracer.cache.n_reads
+                                  * 100))
     plot(tracer)
     input()
