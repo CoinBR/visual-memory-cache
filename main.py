@@ -26,23 +26,107 @@ import matplotlib.pyplot as plt
 
 class Block:
 
-    def __init__(self, n_words=1):
+    def __init__(self, n_layers=1):
+
+        self.n_layers = n_layers
+        self.layers = [Layer(rank) for rank in range(n_layers)]
+
+    def access_address(self, address_tag, word=0):
+        """
+        >>> b = Block(4)
+        >>> b.fix_ranks(3)
+        [0, 1, 2, 3]
+        >>> b.access_address('F')
+        False
+        >>> b.fix_ranks(3)
+        [3, 0, 1, 2]
+        >>> b.access_address('F')
+        True
+        >>> b.fix_ranks(3)
+        [3, 0, 1, 2]
+        """
+
+        for layer in self.layers:
+            rank = layer.access_address(address_tag)
+            if rank is not None:
+                self.fix_ranks(rank)
+                return True
+
+        self._process_miss(address_tag)
+        return False
+
+
+    def get_layer_by_rank(self, rank):
+        """
+        >>> Block().get_layer_by_rank(0).rank
+        0
+        >>> Block(3).get_layer_by_rank(2).rank
+        2
+        >>> b = Block(8)
+        >>> b.get_layer_by_rank(7).rank
+        7
+        >>> b.get_layer_by_rank(5).rank
+        5
+        """
+
+        if rank >= self.n_layers or rank < 0:
+            raise AttributeError('Rank out of bounds')
+
+        for layer in self.layers:
+            if int(layer.rank) == int(rank):
+                return layer
+
+        raise AttributeError('Layer not found (Rank {0})'.format(rank))
+
+
+    def _process_miss(self, address_tag):
+
+       rank = 0
+       self.get_layer_by_rank(rank).process_miss(address_tag)
+       self.fix_ranks(rank)
+
+    def fix_ranks(self, rank):
+        """
+        >>> b = Block(8)
+        >>> [layer.rank for layer in b.layers]
+        [0, 1, 2, 3, 4, 5, 6, 7]
+        >>> b.fix_ranks(5)
+        [0, 1, 2, 3, 4, 7, 5, 6]
+        """
+
+        top_rank = self.n_layers - 1
+        if rank < top_rank:
+            new_top_layer = self.get_layer_by_rank(rank)
+            for i in range(rank + 1, self.n_layers):
+                self.get_layer_by_rank(i).rank -= 1
+
+            new_top_layer.rank = top_rank
+
+        return [layer.rank for layer in self.layers]
+
+
+class Layer:
+
+    def __init__(self, rank=0):
 
         self._pristine = True
         self._address_tag = None
+        self.rank = rank
 
     def access_address(self, address_tag, word=0):
-        # Access a memory Address. If in cache, returns True (hit)
+        # Access a memory Address. If in cache, returns Layer Rank #
 
         if self._pristine:
             self._pristine = False
-            self._address_tag = address_tag
-            return False
+            return None
 
         elif self._address_tag != address_tag:
-            self._address_tag = address_tag
-            return False
-        return True
+            return None
+
+        return self.rank
+
+    def process_miss(self, address_tag):
+        self._address_tag = address_tag
 
     def _fetch_instruction():
         pass
@@ -59,7 +143,7 @@ class Block:
 
 class Cache:
 
-    def __init__(self, n_blocks=4, n_words=1, address_size=32):
+    def __init__(self, n_blocks=4, n_words=1, n_layers=1, address_size=32):
 
         if (n_blocks < 1
                 or n_blocks > 1024
@@ -67,6 +151,7 @@ class Cache:
             raise ValueError('Invalid Cache Size')
 
         self.n_blocks = n_blocks
+        self.n_layers = n_layers
         self.memo_size = 2 ** n_blocks
         self.address_size = address_size
         self.index_size = self._get_n_bits_to_reserve(n_blocks)
@@ -83,7 +168,7 @@ class Cache:
     def reset(self):
         self.n_reads = 0
         self.n_hits = 0
-        self._blocks = [Block() for i in range(self.n_blocks)]
+        self._blocks = [Block(self.n_layers) for i in range(self.n_blocks)]
 
     def _hex_to_bin(self, value):
         """
@@ -194,6 +279,8 @@ class Cache:
         4 / 13
 
 
+        # Many layers and words
+        # TODO
 
         """
         address = self._hex_to_bin(hex_address)
@@ -289,9 +376,10 @@ if __name__ == "__main__":
 
     n_blocks = int(input("# of cache blocks: "))
     n_words = int(input("# of words in each block: "))
+    n_layers = int(input("# of layers in each block: "))
     filename = input("trace file name: ")
 
-    cache = Cache(n_blocks, n_words)
+    cache = Cache(n_blocks, n_words, n_layers)
     tracer = Tracer(cache, filename)
 
     print(tracer.trace())
