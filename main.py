@@ -55,7 +55,6 @@ class Block:
         self._process_miss(address_tag)
         return False
 
-
     def get_layer_by_rank(self, rank):
         """
         >>> Block().get_layer_by_rank(0).rank
@@ -78,12 +77,11 @@ class Block:
 
         raise AttributeError('Layer not found (Rank {0})'.format(rank))
 
-
     def _process_miss(self, address_tag):
 
-       rank = 0
-       self.get_layer_by_rank(rank).process_miss(address_tag)
-       self.fix_ranks(rank)
+        rank = 0
+        self.get_layer_by_rank(rank).process_miss(address_tag)
+        self.fix_ranks(rank)
 
     def fix_ranks(self, rank):
         """
