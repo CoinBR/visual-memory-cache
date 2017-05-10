@@ -1,0 +1,99 @@
+<template>
+  <div class="cache-layers-container">
+    <div v-for="layer in fixedData.layers" class="layer-container">
+      <big>Layer {{layer.n}}</big>
+      <table class="q-table bordered striped">
+        <thead>
+          <tr>
+            <th class="text-left">R
+              <q-tooltip>
+                the RANK of the Layer in this Block
+              </q-tooltip>
+            </th>
+            <th class="text-left">V
+              <q-tooltip>
+                Is this entry VALID?
+              </q-tooltip>
+            </th>
+            <th class="text-left">D
+              <q-tooltip>
+                Is this entry DIRTY?
+              </q-tooltip>
+            </th>
+            <th class="text-right">Tag</th>
+            <th class="text-right" v-for="word_num in 4">{{word_num}}
+               <q-tooltip>
+                 Word #{{word_num}}
+              </q-tooltip>           
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="block in layer.blocks">
+            <td class="text-right">0</td>
+            <td class="text-right">0</td>
+            <td class="text-right">0</td>
+            <td class="text-left">0xFFFFFFFF</td>
+            <td class="text-right" v-for="word in block.words">0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</template>
+<script>
+export default {
+  data () {
+    return {
+      fixedData: {
+        layers: []
+      }
+    }
+  },
+  methods: {
+    updateFixedData (data, oldData) {
+      const nLayers = data.blocks[0].layers.length
+      const nBlocks = data.blocks.length
+      var fixedData = { layers: [] }
+
+      var layer = null
+      for (var layerN = 0; layerN < nLayers; layerN++) {
+        layer = { blocks: [] }
+        for (var blockN = 0; blockN < nBlocks; blockN++) {
+          var subBlock = data.blocks[blockN].layers[layerN]
+          subBlock += data.blocks[blockN]
+          delete subBlock['layers']
+          this.subBlock = subBlock
+          layer.blocks.push(subBlock)
+          layer['n'] = layerN
+        }
+        fixedData.layers.push(layer)
+      }
+      this.fixedData = fixedData
+    }
+  },
+  props: ['data'],
+  created: function () {
+    this.updateFixedData(this.data, this.data)
+  },
+  watch: {
+    'data': this.updateFixedData
+  }
+}
+</script>
+
+<style>
+  .cache-layers-container{
+    float: left;
+  }
+  .cache-layers-container big{
+    padding: 50px 0px 0px 0px;
+    text-align: center;
+    width: 100%;
+    clear: both;
+    display: block;
+  }
+  table{
+    clear: both;
+  }
+</style>

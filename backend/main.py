@@ -20,16 +20,52 @@
 # 1. Do not hold the author(s), creator(s), developer(s) or distributor(s)
 # liable for anything that happens or goes wrong with your use of the work.
 
+import random
+import string
+import json
+
+from collections import deque
 
 import matplotlib.pyplot as plt
 
 
-class Block:
+class Memory:
 
-    def __init__(self, n_layers=1):
+    def __init__(self, size=1024):
+
+        self.size = size
+        self.highlight = None
+        # self.items = [random.choice(string.ascii_letters) for i in range(size)]
+        self.items = {}
+
+    def read(self, address):
+        if address not in self.items:
+            self.write(address, random.choice(string.ascii_letters))
+        return self.items[address]
+
+    def write(self, address, value):
+        self._check_and_enforce_limit()
+        self.items[address] = value
+        return value
+
+    def _check_and_enforce_limit(self):
+
+        if len(self.items) >= self.size:
+            self.items.popitem()
+
+
+class Block(json.JSONEncoder):
+
+    def __init__(self, n_layers=1, n_words=1, index_bin=str(0), memory=Memory()):
 
         self.n_layers = n_layers
-        self.layers = [Layer(rank) for rank in range(n_layers)]
+        self.layers = [Layer(rank, n_words, index_bin, memory)
+                       for rank in range(n_layers)]
+        self.memory = memory
+        self.index_bin = index_bin
+
+    def _to_json(self):
+        return {'layers': [layer._to_json() for layer in self.layers]}
 
     def access_address(self, address_tag, word=0):
         """
@@ -47,13 +83,24 @@ class Block:
         """
 
         for layer in self.layers:
-            rank = layer.access_address(address_tag)
+            rank = layer.access_address(address_tag, word)
             if rank is not None:
                 self.fix_ranks(rank)
                 return True
 
         self._process_miss(address_tag)
         return False
+
+    def write(self, address_tag, word_int=0, op='w'):
+
+        for layer in self.layers:
+            rank = layer.try_write(address_tag, word_int, op)
+            if rank is not None:
+                self.fix_ranks(rank)
+                return
+
+        self.get_layer_by_rank(self.n_layers - 1).write(address_tag,
+                                                        word_int, op)
 
     def get_layer_by_rank(self, rank):
         """
@@ -66,6 +113,7 @@ class Block:
         7
         >>> b.get_layer_by_rank(5).rank
         5
+
         """
 
         if rank >= self.n_layers or rank < 0:
@@ -77,10 +125,10 @@ class Block:
 
         raise AttributeError('Layer not found (Rank {0})'.format(rank))
 
-    def _process_miss(self, address_tag):
+    def _process_miss(self, address_tag, word=0, index=str(0)):
 
         rank = 0
-        self.get_layer_by_rank(rank).process_miss(address_tag)
+        self.get_layer_by_rank(rank).process_miss(address_tag, word)
         self.fix_ranks(rank)
 
     def fix_ranks(self, rank):
@@ -105,13 +153,29 @@ class Block:
 
 class Layer:
 
-    def __init__(self, rank=0):
+    def __init__(self, rank=0, n_words=1, index_bin=str(0), memory=Memory()):
 
         self._pristine = True
+        self.dirty = False
         self._address_tag = None
         self.rank = rank
+        self.n_words = n_words
+        self.words = [0 for i in range(n_words)]
+        self.index_bin = index_bin
+        self.memory = memory
 
-    def access_address(self, address_tag, word=0):
+    def _to_json(self):
+
+        return {
+                'valid': int(not self._pristine),
+                'dirty': int(self.dirty),
+                'rank': self.rank,
+                'words': self.words,
+                'tag': self._address_tag
+               }
+
+
+    def access_address(self, address_tag, word=0, index=str(0)):
         # Access a memory Address. If in cache, returns Layer Rank #
         """
         >>> c = Cache(2, 1, 4)
@@ -178,8 +242,54 @@ class Layer:
 
         return self.rank
 
-    def process_miss(self, address_tag):
+    def try_write(self, address_tag, word_int=0, op='w'):
+
+        if self._address_tag != address_tag:
+            return None
+
+        self.write(address_tag, word_int, op)
+        return self.rank
+
+    def write(self, address_tag, word_int=0, op='w'):
+
+        word_bin = bin(word_int)[2:]
+        value = random.choice(string.ascii_letters)
+        full_address = ''.join((address_tag, self.index_bin, word_bin))
+
         self._address_tag = address_tag
+        self.fill_words_from_memory(address_tag, word_bin)
+        self.words[word_int] = value
+
+        if op == 'w':
+            self.memory.write(full_address)
+        else:
+            self.dirty = True
+
+    def _gen_all_possible_words(self):
+        if self.n_words == 1:
+            return ''
+
+        n_chars = len(bin(self.n_words - 1)[2:])
+
+        return [bin(i)[2:].zfill(n_chars)
+                for i in range(self.n_words)]
+
+    def _copy_back_fix(self, word):
+        if self.dirty:
+            full_address = ''.join((self._address_tag, self.index_bin,
+                                   bin(word)[2:]))
+            self.memory.write(full_address, self.words[word])
+
+    def process_miss(self, address_tag, word):
+
+        self._copy_back_fix(word)
+        self._address_tag = address_tag
+        self.fill_words_from_memory(address_tag, word)
+
+    def fill_words_from_memory(self, address_tag, word):
+        self.words = [self.memory.read(''.join(
+            (address_tag, self.index_bin, w, )))
+                      for w in self._gen_all_possible_words()]
 
     def _fetch_instruction():
         pass
@@ -196,18 +306,21 @@ class Layer:
 
 class Cache:
 
-    def __init__(self, n_blocks=4, n_words=1, n_layers=1, address_size=32):
+    def __init__(self, n_blocks=4, n_words=1, n_layers=1, address_size=32,
+                 method='r'):
 
         if (n_blocks < 1
-                or n_blocks > 1024
                 or not isinstance(n_blocks, int)):
             raise ValueError('Invalid Cache Size')
 
         self.n_blocks = n_blocks
         self.n_layers = n_layers
-        self.memo_size = 2 ** n_blocks
         self.address_size = address_size
         self.index_size = self._get_n_bits_to_reserve(n_blocks)
+#        self.memory = Memory(2 ** address_size - 1)
+        # not really a memory, just a fake summary to print
+        self.memory = Memory(max(256, n_blocks * n_layers * n_words * 2))
+        self.method = method
 
         if n_words == 1:
             self.words_size = 0
@@ -221,7 +334,10 @@ class Cache:
     def reset(self):
         self.n_reads = 0
         self.n_hits = 0
-        self._blocks = [Block(self.n_layers) for i in range(self.n_blocks)]
+        self._blocks = [Block(self.n_layers, self.n_words,
+                              bin(i)[2:].zfill(self.index_size),
+                              self.memory)
+                        for i in range(self.n_blocks)]
 
     def _hex_to_bin(self, value):
         """
@@ -296,6 +412,15 @@ class Cache:
         """
         return address[:self.address_size - self.index_size - self.words_size]
 
+    def _split_address(self, hex_address):
+        address = self._hex_to_bin(hex_address)
+        return (self._get_tag(address), self._get_index(address),
+                self._get_word(address))
+
+    def _get_block(self, hex_address):
+        index = self._get_index(self._hex_to_bin(hex_address))
+        return self._blocks[int(index, 2)]
+
     def read(self, hex_address):
         """
         >>> c = Cache(4)
@@ -336,12 +461,26 @@ class Cache:
         # TODO
 
         """
-        address = self._hex_to_bin(hex_address)
-
-        block = self._blocks[int(self._get_index(address), 2)]
-        self.n_hits += block.access_address(self._get_tag(address),
-                                            self._get_word(address))
+        tag, index, word = self._split_address(hex_address)
+        block = self._get_block(hex_address)
+        self.n_hits += block.access_address(tag, word)
         self.n_reads += 1
+
+    def write(self, hex_address):
+
+        tag, index, word = self._split_address(hex_address)
+        block = self._get_block(hex_address)
+        block.write(tag, int(word, 2), self.method)
+
+    def process(self, op, address):
+        if op not in ('r', 'w', 'c', ):
+            raise AttributeError('Cache Operation \'{0}\' is not\
+                                 supported'.format(op))
+        if op == 'r':
+            self.read(address)
+        else:
+            self.write(address)
+
 
     def _get_n_bits_to_reserve(self, max_num):
         """ # of last bits reserved to determine memory group
@@ -378,8 +517,14 @@ class Tracer:
 
     def __init__(self, cache, filename):
         self.cache = cache
+        self.method = cache.method
         self.filename = filename
+        self.reset()
+
+    def reset(self):
         self.log = []
+        self.requests = self._filter()
+        self.cache.reset()
 
     def _readlines(self):
         with open('traces/{0}.trace'.format(self.filename)) as f:
@@ -388,15 +533,48 @@ class Tracer:
         return [x.strip() for x in content]
 
     def _filter(self):
+#        """
+#        >>> Tracer(Cache(8), 'tst')._filter()
+#        ['20d', '211', 'fafe', 'c01111', '0', '1', '2', '3', '4', '4', '5', '6']
+#        """
         """
         >>> Tracer(Cache(8), 'tst')._filter()
-        ['20d', '211', 'fafe', 'c01111', '0', '1', '2', '3', '4', '4', '5', '6']
+        deque([('r', '20d'), ('r', '211'), ('r', 'fafe'), ('r', 'c01111'), ('r', '0'), ('r', '1'), ('r', '2'), ('r', '3'), ('r', '4'), ('r', '4'), ('r', '5'), ('r', '6')])
         """
-        rtrn = []
+
+        rtrn = deque([])
         for line in self._readlines():
-            if line[0] == '2':
-                rtrn.append(line[2:])
+            op_int = int(line[0])
+            op_s = None
+            address = line[2:]
+
+            if op_int == 1 and not self.method == 'r':
+                op_s = self.method
+
+            elif op_int in (0, 2, ):
+                op_s = 'r'
+
+            if op_s:
+                rtrn.append((op_s, address, ))
+
         return rtrn
+
+    def _log_step(self):
+        return {
+            'cache': {
+                'blocks': [block._to_json() for block in self.cache._blocks]
+            },
+            'memory': {
+                'items': list(self.cache.memory.items.items()),
+                'highlight': self.cache.memory.highlight,
+            },
+            'rates': {
+                'hits': self.cache.n_hits,
+                'reads': self.cache.n_reads
+            },
+            'instruction': self.current_instruction,
+            'last_step': False,
+        }
 
     def trace(self):
         """
@@ -406,16 +584,27 @@ class Tracer:
         '6 / 12'
         """
 
-        self.cache.reset()
-        self.log = []
-
-        for word in self._filter():
-            self.cache.read(word)
-            self.log.append((self.cache.n_hits,
-                             self.cache.n_blocks))
+        while type(self.trace_step()) is not dict:
+            pass
 
         return str(self.cache)
 
+    def trace_step(self, log_step=False):
+
+        op, address = self.requests.popleft()
+        self.current_instruction = ' - '.join((op.upper(), address))
+        if self.current_instruction[0] == 'C':
+            self.current_instruction = 'W' + self.current_instruction[1:]
+        self.cache.process(op, address)
+        self.log.append((self.cache.n_hits, self.cache.n_blocks))
+        if len(self.requests) <= 0:
+            self.requests.append((op, address))
+            r = self._log_step()
+            r['last_step'] = True
+            return r
+        if log_step:
+            return self._log_step()
+        return True
 
 def plot(tracer):
 
@@ -431,6 +620,9 @@ if __name__ == "__main__":
     n_words = int(input("# of words in each block: "))
     n_layers = int(input("# of layers in each block: "))
     filename = input("trace file name: ")
+    method = input("Method. (r)ead, (w)rite through or (c)opy back: ")
+    if not method:
+        method = 'r'
 
     cache = Cache(n_blocks, n_words, n_layers)
     tracer = Tracer(cache, filename)
@@ -438,5 +630,10 @@ if __name__ == "__main__":
     print('{0} ({1:.2f}%)'.format(tracer.trace(),
                                   tracer.cache.n_hits / tracer.cache.n_reads
                                   * 100))
+
+#    with open('result.json', 'w') as fp:
+#        json.dump(tracer.steps, fp)
+#        fp.close()
+
     plot(tracer)
     input()
