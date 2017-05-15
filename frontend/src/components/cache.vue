@@ -29,7 +29,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="block in layer.blocks">
+          <tr v-for="block in layer.blocks" :class="{ 'bg-secondary' : block.highlight }">
             <td class="text-right">{{ block.rank }}</td>
             <td class="text-right">{{ block.valid }}</td>
             <td class="text-right">{{ block.dirty }}</td>

@@ -3,8 +3,8 @@
 
     <div class="play-panel">
 
-      <button id='btn-play' class="primary circular centr" @click="" style=": 70%;">
-        <i>play_arrow</i>
+      <button id='btn-play' class="primary circular centr" @click="togglePlay" style=": 70%;">
+        <i>{{ play ? 'pause' : 'play_arrow' }}</i>
       </button>
 
       <button id='btn-forward' class="grey small centr" @click="forward" style=": 70%;">
@@ -46,7 +46,8 @@ import { Loading } from 'quasar'
 export default {
   data () {
     return {
-      nSteps: 1
+      nSteps: 1,
+      play: false
     }
   },
   props: ['forwardOnceURL', 'data'],
@@ -61,7 +62,11 @@ export default {
     },
     forwardCB () {
       Loading.hide()
-      this.$emit('forward', JSON.parse(this.req.responseText))
+      var jsn = JSON.parse(this.req.responseText)
+      this.$emit('forward', jsn)
+      if (jsn.last_step) {
+        this.play = false
+      }
     },
     getSuccessPercentage () {
       if (this.data.rates.reads <= 0) {
@@ -69,7 +74,18 @@ export default {
       }
       const percentage = this.data.rates.hits / this.data.rates.reads
       return (percentage * 100).toFixed(2).toString() + '%'
+    },
+    runPlayStep () {
+      if (this.play) {
+        this.forward()
+      }
+    },
+    togglePlay () {
+      this.play ? this.play = false : this.play = true
     }
+  },
+  created () {
+    setInterval(this.runPlayStep, 3700)
   }
 }
 </script>

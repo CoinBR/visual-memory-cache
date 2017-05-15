@@ -82,6 +82,10 @@ class Block(json.JSONEncoder):
     def _to_json(self):
         return {'layers': [layer._to_json() for layer in self.layers]}
 
+    def clear_highlights(self):
+        for layer in self.layers:
+            layer.highlight = False
+
     def access_address(self, address_tag, word=0):
         """
         >>> b = Block(4)
@@ -178,17 +182,20 @@ class Layer:
         self.words = [0 for i in range(n_words)]
         self.index_bin = index_bin
         self.memory = memory
+        self.highlight = False
 
     def _to_json(self):
 
-        return {
+        rtrn = {
                 'valid': int(not self._pristine),
                 'dirty': int(self.dirty),
                 'rank': self.rank,
                 'words': self.words,
                 'tag': self._address_tag
                }
-
+        if self.highlight:
+            rtrn['highlight'] = True
+        return rtrn
 
     def access_address(self, address_tag, word=0, index=str(0)):
         # Access a memory Address. If in cache, returns Layer Rank #
@@ -255,6 +262,7 @@ class Layer:
         elif self._address_tag != address_tag:
             return None
 
+        self.highlight = True
         return self.rank
 
     def try_write(self, address_tag, word_int=0, op='w'):
@@ -267,16 +275,18 @@ class Layer:
 
     def write(self, address_tag, word_int=0, op='w'):
 
+        self.highlight = True
+
         word_bin = bin(word_int)[2:]
         value = random.choice(string.ascii_letters)
         full_address = ''.join((address_tag, self.index_bin, word_bin))
 
         self._address_tag = address_tag
-        self.fill_words_from_memory(address_tag, word_bin)
+        # self.fill_words_from_memory(address_tag, word_bin)
         self.words[word_int] = value
 
         if op == 'w':
-            self.memory.write(full_address)
+            self.memory.write(full_address, value)
         else:
             self.dirty = True
 
@@ -297,6 +307,7 @@ class Layer:
 
     def process_miss(self, address_tag, word):
 
+        self.highlight = True
         self._copy_back_fix(word)
         self._address_tag = address_tag
         self.fill_words_from_memory(address_tag, word)
@@ -487,9 +498,10 @@ class Cache:
         block = self._get_block(hex_address)
         block.write(tag, int(word, 2), self.method)
 
-
     def _clear_highlights(self):
         self.memory.clear_highlights()
+        for block in self._blocks:
+            block.clear_highlights()
 
     def process(self, op, address):
         self._clear_highlights()
