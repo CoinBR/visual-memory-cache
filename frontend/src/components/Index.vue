@@ -14,12 +14,11 @@
   <q-drawer ref="leftDrawer">
     <side-options-menu :upload-url='uploadUrl' @got-forward-once-url='setForwardURL' @start-trace='updateTables' @toggle-show-tables='toggleShowTables' />
   </q-drawer>
-
   <!-- IF USING subRoutes only: -->
   <router-view class="layout-view"></router-view>
   <!-- OR ELSE, IF NOT USING subRoutes: -->
   <div class="layout-view" v-if="showTables">
-    <memory :memory='data.memory' v-if='data.memory.items.length' />
+    <memory :memory='data.memory' v-if='data.memory.length' />
     <cache :data='data.cache' v-if='data.cache.blocks.length' />
   </div>
    <!-- Footer -->
@@ -49,9 +48,7 @@ export default {
         cache: {
           blocks: []
         },
-        memory: {
-          items: []
-        },
+        memory: [],
         rates: {
           hits: 0,
           reads: 0

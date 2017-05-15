@@ -9,9 +9,9 @@
       </tr>
     </thead>
     <tbody>
-      <tr v-for="item in memory.items">
+      <tr v-for="item in memory" :class="{ 'bg-secondary' : item[1].highlight }">
         <td class="text-left">{{ toHex(item[0]) }}</td>
-        <td class="text-right">{{ item[1] }}</td>
+        <td class="text-right">{{ item[1].value }}</td>
       </tr>
     </tbody>
   </table>

@@ -24,9 +24,16 @@ import random
 import string
 import json
 
-from collections import deque
+from collections import deque, OrderedDict
 
 import matplotlib.pyplot as plt
+
+
+def hp(stuff):
+    print()
+    print(70*'>')
+    print(stuff)
+    print(70*'<')
 
 
 class Memory:
@@ -34,24 +41,32 @@ class Memory:
     def __init__(self, size=1024):
 
         self.size = size
-        self.highlight = None
         # self.items = [random.choice(string.ascii_letters) for i in range(size)]
         self.items = {}
 
     def read(self, address):
         if address not in self.items:
             self.write(address, random.choice(string.ascii_letters))
+        else:
+            self.items[address]['highlight'] = True
         return self.items[address]
 
     def write(self, address, value):
         self._check_and_enforce_limit()
-        self.items[address] = value
+        self.items[address] = {'value': value, 'highlight': True}
         return value
+
+    def clear_highlights(self):
+        for item in self.items:
+            self.items[item].pop('highlight', None)
 
     def _check_and_enforce_limit(self):
 
         if len(self.items) >= self.size:
             self.items.popitem()
+
+    def _to_json(self):
+        return sorted(self.items.items())
 
 
 class Block(json.JSONEncoder):
@@ -288,7 +303,7 @@ class Layer:
 
     def fill_words_from_memory(self, address_tag, word):
         self.words = [self.memory.read(''.join(
-            (address_tag, self.index_bin, w, )))
+            (address_tag, self.index_bin, w, )))['value']
                       for w in self._gen_all_possible_words()]
 
     def _fetch_instruction():
@@ -472,7 +487,13 @@ class Cache:
         block = self._get_block(hex_address)
         block.write(tag, int(word, 2), self.method)
 
+
+    def _clear_highlights(self):
+        self.memory.clear_highlights()
+
     def process(self, op, address):
+        self._clear_highlights()
+
         if op not in ('r', 'w', 'c', ):
             raise AttributeError('Cache Operation \'{0}\' is not\
                                  supported'.format(op))
@@ -564,10 +585,8 @@ class Tracer:
             'cache': {
                 'blocks': [block._to_json() for block in self.cache._blocks]
             },
-            'memory': {
-                'items': list(self.cache.memory.items.items()),
-                'highlight': self.cache.memory.highlight,
-            },
+            'memory': self.cache.memory._to_json(),
+            # list(self.cache.memory.items.items())
             'rates': {
                 'hits': self.cache.n_hits,
                 'reads': self.cache.n_reads
